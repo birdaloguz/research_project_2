@@ -4,9 +4,9 @@ from scipy import sparse
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-df_ratings = pd.read_csv('ml-20m/ratings.csv', skiprows=[0], names=["user_id", "movie_id", "rating", "timestamp"]).drop(columns=['timestamp'])
-#df_ratings = pd.read_csv('movie_tweetings/ratings.dat', names=["user_id", "movie_id", "rating", "timestamp"],
-#                         header=None, sep='::', engine='python')
+#df_ratings = pd.read_csv('ml-20m/ratings.csv', skiprows=[0], names=["user_id", "movie_id", "rating", "timestamp"]).drop(columns=['timestamp'])
+df_ratings = pd.read_csv('movie_tweetings/ratings.dat', names=["user_id", "movie_id", "rating", "timestamp"],
+                         header=None, sep='::', engine='python')
 matrix_df = df_ratings.pivot(index='movie_id', columns='user_id', values='rating').fillna(0).astype(bool).astype(int)
 print(matrix_df)
 # idx to id and reverse dicts
