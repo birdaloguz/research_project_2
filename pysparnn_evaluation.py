@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import pysparnn.cluster_index as ci
 
-df_ratings = pd.read_csv('ml-20m/ratings.csv', skiprows=[0], names=["user_id", "movie_id", "rating", "timestamp"]).drop(columns=['timestamp']).head(3000000)
+df_ratings = pd.read_csv('ml-20m/ratings.csv', skiprows=[0], names=["user_id", "movie_id", "rating", "timestamp"]).drop(columns=['timestamp'])
 #df_ratings = pd.read_csv('ml-10m/ratings.dat', names=["user_id", "movie_id", "rating", "timestamp"],
 #                         header=None, sep='::', engine='python')
 matrix_df_x = df_ratings.pivot(index='movie_id', columns='user_id', values='rating').fillna(0).astype(bool).astype(int)
