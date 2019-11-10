@@ -5,12 +5,14 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import pysparnn.cluster_index as ci
 
-df_ratings = pd.read_csv('ml-20m/ratings.csv', skiprows=[0], names=["user_id", "movie_id", "rating", "timestamp"]).drop(columns=['timestamp'])
-#df_ratings = pd.read_csv('ml-10m/ratings.dat', names=["user_id", "movie_id", "rating", "timestamp"],
-#                         header=None, sep='::', engine='python')
+#df_ratings = pd.read_csv('ml-20m/ratings.csv', skiprows=[0], names=["user_id", "movie_id", "rating", "timestamp"]).drop(columns=['timestamp'])
+df_ratings = pd.read_csv('movie_tweetings/ratings.dat', names=["user_id", "movie_id", "rating", "timestamp"],
+                         header=None, sep='::', engine='python')
 matrix_df_x = df_ratings.pivot(index='movie_id', columns='user_id', values='rating').fillna(0).astype(bool).astype(int)
 
 matrix_df = matrix_df_x
+droplist = [i for i in matrix_df.columns if np.count_nonzero(matrix_df[i])<1]
+matrix_df.drop(droplist, axis=1, inplace=True)
 # idx to id and reverse dicts
 c = 0
 hashmap = {}
@@ -139,7 +141,7 @@ for k in [2, 5, 10, 15, 20, 50]:
     eval_results['ndcg'][k] = ndcg
     import json
 
-    with open('pysparnn_eval_results_k.json', 'w') as fp:
+    with open('pysparnn_eval_results_k_mt.json', 'w') as fp:
         json.dump(eval_results, fp)
 
 
