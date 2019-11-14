@@ -3,14 +3,43 @@ import scipy
 from scipy import sparse
 import numpy as np
 from sklearn.model_selection import train_test_split
+import pysparnn.cluster_index as ci
+from scipy import sparse
+coo_row = []
+coo_col = []
+coo_val = []
 
-#df_ratings = pd.read_csv('ml-20m/ratings.csv', skiprows=[0], names=["user_id", "movie_id", "rating", "timestamp"]).drop(columns=['timestamp'])
-df_ratings = pd.read_csv('movie_tweetings/ratings.dat', names=["user_id", "movie_id", "rating", "timestamp"],
-                         header=None, sep='::', engine='python')
-matrix_df = df_ratings.pivot(index='movie_id', columns='user_id', values='rating').fillna(0).astype(bool).astype(int)
-droplist = [i for i in matrix_df.columns if np.count_nonzero(matrix_df[i])<1]
-matrix_df.drop(droplist, axis=1, inplace=True)
-print(matrix_df)
+datasets = ['netflix/combined_data_1.txt',
+            'netflix/combined_data_2.txt']
+
+for dataset in datasets:
+    with open(dataset, "r") as f:
+        movie = -1
+        c=0
+        for line in f:
+            print(c)
+            c+=1
+            if line.endswith(':\n'):
+                movie = int(line[:-2]) - 1
+                continue
+            assert movie >= 0
+            splitted = line.split(',')
+            user = int(splitted[0])
+            rating = float(splitted[1])
+            coo_row.append(user)
+            coo_col.append(movie)
+            coo_val.append(rating)
+
+coo_val = np.array(coo_val, dtype=np.float32)
+coo_col = np.array(coo_col, dtype=np.int32)
+coo_row = np.array(coo_row)
+user, indices = np.unique(coo_row, return_inverse=True)
+user = user.astype(np.int32)
+
+
+um_matrix = sparse.coo_matrix((coo_val, (indices, coo_col))).T
+#matrix_df = pd.DataFrame(data=um_matrix.toarray(), columns=[i for i in range(81472)])
+matrix_df = pd.DataFrame(data=um_matrix.toarray(), columns=[i for i in range(478018)])
 # idx to id and reverse dicts
 c = 0
 hashmap = {}
@@ -25,7 +54,7 @@ validation_movies = matrix_df.ne(0).idxmax()
 
 import random
 
-for idx, col in enumerate(matrix_df):
+for col in matrix_df:
     validation_movies[col] = random.choice(matrix_df[col].to_numpy().nonzero()[0])
 
 # make validation movies unrated
@@ -33,7 +62,6 @@ for index, row in validation_movies.items():
     matrix_df[index][hashmap[row]] = 0
 
 um_matrix = scipy.sparse.csr_matrix(matrix_df.values)
-
 
 # idx to id and reverse dicts
 c = 0
@@ -50,14 +78,7 @@ for user in matrix_df:
     a = [i for i, e in enumerate(matrix_df[user].tolist()) if e != 0]
     user_hists.append(a)
 
-
-from sklearn.neighbors import NearestNeighbors
-
-# knn model
-model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=2, n_jobs=-1)
-model_knn.fit(um_matrix)
-
-
+# ndcg calculation
 def dcg_at_k(r, k, method=0):
     r = np.asfarray(r)[:k]
     if r.size:
@@ -76,7 +97,7 @@ def ndcg_at_k(r, k, method=0):
         return 0.
     return dcg_at_k(r, k, method) / dcg_max
 
-
+# mrp calculation
 def mean_reciprocal_rank(rs):
     rs = (np.asarray(r).nonzero()[0] for r in rs)
     return np.mean([1. / (r[0] + 1) if r.size else 0. for r in rs])
@@ -86,25 +107,30 @@ eval_results = {'recalls': {},
                 'mrr': {},
                 'ndcg': {}}
 
-for k in [2, 5, 10, 15, 20, 50]:
+doc_index = np.array(range(len(matrix_df)))
+
+snn = ci.MultiClusterIndex(um_matrix, doc_index, num_indexes=10)
+for k in [2, 5, 10, 15, 20, 50, 100]:
+    # for each user get average distance of the movies that user rated to retrieve top k movies to recommend
     print(k)
 
+    results = snn.search(um_matrix, k=k, return_distance=True, k_clusters=1)
 
-    distances, indices = model_knn.kneighbors(um_matrix, n_neighbors=k)
+    results_dic = []
+    for i in results:
+        results_dic.append(dict((int(y), x) for x, y in i))
 
     # for each user get average distance of the movies that user rated to retrieve top k movies to recommend
     avg_dict = {}
     for index, user in enumerate(user_hists):
         user_dict = {}
         for movie in user:
-            distances_user = distances[movie].squeeze().tolist()
-            indices_user = indices[movie].squeeze().tolist()
-            for idx, i in enumerate(indices_user):
-                if i not in user_dict:
-                    user_dict[i] = distances_user[idx]
+            for m in results_dic[movie]:
+                if m not in user_dict:
+                    user_dict[m] = results_dic[movie][m]
                 else:
-                    user_dict[i] += distances_user[idx]
-        avg_dict[index] = dict(sorted(user_dict.items(), key=lambda x: x[1], reverse=False))
+                    user_dict[m] += results_dic[movie][m]
+        avg_dict[index] = dict(sorted(user_dict.items(), key=lambda x: x[1]))
         for m in user_hists[index]:
             try:
                 del avg_dict[index][m]
@@ -118,7 +144,7 @@ for k in [2, 5, 10, 15, 20, 50]:
             recall += 1
 
     recall = recall / len(user_hists)
-    eval_results['recalls'][k] = recall
+    print(recall)
 
     results = []
     for key in avg_dict:
@@ -132,18 +158,19 @@ for k in [2, 5, 10, 15, 20, 50]:
                 results[i][x] = 0
 
     mrr = mean_reciprocal_rank(results)
-    eval_results['mrr'][k]=mrr
     ndcg = 0
     for i in results:
         ndcg += ndcg_at_k(i, 10)
     ndcg = ndcg / len(results)
-    eval_results['ndcg'][k]=ndcg
 
-
+    eval_results['recalls'][k] = recall
+    eval_results['mrr'][k] = mrr
+    eval_results['ndcg'][k] = ndcg
     import json
 
-    with open('knn_eval_results_k_mt2.json', 'w') as fp:
+    with open('pysparnn_eval_results_k_netflix.json', 'w') as fp:
         json.dump(eval_results, fp)
+
 
 
 

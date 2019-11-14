@@ -1,17 +1,45 @@
 import pandas as pd
-import scipy
-from scipy import sparse
+# Skip date
+import gc
 import numpy as np
-from sklearn.model_selection import train_test_split
+import pandas as pd
+from scipy import sparse
+coo_row = []
+coo_col = []
+coo_val = []
 
-#df_ratings = pd.read_csv('ml-20m/ratings.csv', skiprows=[0], names=["user_id", "movie_id", "rating", "timestamp"]).drop(columns=['timestamp'])
-df_ratings = pd.read_csv('movie_tweetings/ratings.dat', names=["user_id", "movie_id", "rating", "timestamp"],
-                         header=None, sep='::', engine='python')
-matrix_df = df_ratings.pivot(index='movie_id', columns='user_id', values='rating').fillna(0).astype(bool).astype(int)
-droplist = [i for i in matrix_df.columns if np.count_nonzero(matrix_df[i])<1]
-matrix_df.drop(droplist, axis=1, inplace=True)
-print(matrix_df)
-# idx to id and reverse dicts
+datasets = ['netflix/combined_data_1.txt',
+            'netflix/combined_data_2.txt']
+
+for dataset in datasets:
+    with open(dataset, "r") as f:
+        movie = -1
+        c=0
+        for line in f:
+            print(c)
+            c+=1
+            if line.endswith(':\n'):
+                movie = int(line[:-2]) - 1
+                continue
+            assert movie >= 0
+            splitted = line.split(',')
+            user = int(splitted[0])
+            rating = float(splitted[1])
+            coo_row.append(user)
+            coo_col.append(movie)
+            coo_val.append(rating)
+
+coo_val = np.array(coo_val, dtype=np.float32)
+coo_col = np.array(coo_col, dtype=np.int32)
+coo_row = np.array(coo_row)
+user, indices = np.unique(coo_row, return_inverse=True)
+user = user.astype(np.int32)
+
+
+um_matrix = sparse.coo_matrix((coo_val, (indices, coo_col))).T
+#matrix_df = pd.DataFrame(data=um_matrix.toarray(), columns=[i for i in range(81472)])
+matrix_df = pd.DataFrame(data=um_matrix.toarray(), columns=[i for i in range(478018)])
+
 c = 0
 hashmap = {}
 reverse_hashmap = {}
@@ -32,8 +60,7 @@ for idx, col in enumerate(matrix_df):
 for index, row in validation_movies.items():
     matrix_df[index][hashmap[row]] = 0
 
-um_matrix = scipy.sparse.csr_matrix(matrix_df.values)
-
+um_matrix = sparse.csr_matrix(matrix_df.values)
 
 # idx to id and reverse dicts
 c = 0
@@ -46,7 +73,7 @@ for i in list(matrix_df):
 
 # list of movies that each user rated
 user_hists = []
-for user in matrix_df:
+for user in matrix_df[:10000]:
     a = [i for i, e in enumerate(matrix_df[user].tolist()) if e != 0]
     user_hists.append(a)
 
@@ -91,7 +118,6 @@ for k in [2, 5, 10, 15, 20, 50]:
 
 
     distances, indices = model_knn.kneighbors(um_matrix, n_neighbors=k)
-
     # for each user get average distance of the movies that user rated to retrieve top k movies to recommend
     avg_dict = {}
     for index, user in enumerate(user_hists):
@@ -142,8 +168,9 @@ for k in [2, 5, 10, 15, 20, 50]:
 
     import json
 
-    with open('knn_eval_results_k_mt2.json', 'w') as fp:
+    with open('knn_eval_results_k_netflix2.json', 'w') as fp:
         json.dump(eval_results, fp)
+
 
 
 

@@ -81,13 +81,12 @@ eval_results = {'recalls': {},
 
 doc_index = np.array(range(len(matrix_df)))
 
-snn = ci.MultiClusterIndex(um_matrix, doc_index, num_indexes=10)
 
 for k in [2, 5, 10, 15, 20, 50]:
     # for each user get average distance of the movies that user rated to retrieve top k movies to recommend
     print(k)
-
-    results = snn.search(um_matrix, k=k, return_distance=True, num_indexes=10, k_clusters=5)
+    snn = ci.MultiClusterIndex(um_matrix, doc_index, num_indexes=k)
+    results = snn.search(um_matrix, k=5, return_distance=True, k_clusters=1)
 
     results_dic = []
     for i in results:
@@ -141,7 +140,7 @@ for k in [2, 5, 10, 15, 20, 50]:
     eval_results['ndcg'][k] = ndcg
     import json
 
-    with open('pysparnn_eval_results_k_mt.json', 'w') as fp:
+    with open('pysparnn_eval_results_index_mt3.json', 'w') as fp:
         json.dump(eval_results, fp)
 
 
