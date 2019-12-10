@@ -2,6 +2,10 @@ import pandas as pd
 import numpy as np
 import scipy
 from sklearn.neighbors import NearestNeighbors
+from joblib import Parallel, delayed
+import time
+
+start = time.time()
 
 df = pd.read_csv('rsc15-raw/rsc15-clicks.dat', names=["session_id", "timestamp", "item_id", "category"],
                          header=None, sep=',', engine='python').drop_duplicates(subset=['session_id', 'item_id'], keep='last')
@@ -10,17 +14,19 @@ df = df.reset_index()
 
 session_validation_dict = {}
 drop_index = []
+c = 0
 for i in df.session_id.unique():
-    if len(df.loc[df['session_id'] == i])>=5:
-        session_validation_dict[i] = df.loc[df['session_id'] == i].tail(1)['item_id'].values[0]
-        drop_index.append(df.loc[df['session_id'] == i].tail(1).index)
+    if len(df.loc[df['session_id'] == i])>=5 and c<=100000:
+        session_validation_dict[i] = df.loc[df['session_id'] == i].head(2).tail(1)['item_id'].values[0]
+        drop_index.append(df.loc[df['session_id'] == i].head(2).tail(1).index)
+        c+=1
 for i in drop_index:
     df = df.drop(i)
 
 um_matrix = scipy.sparse.csr_matrix((df.value, (df.session_id, df.item_id)))
 
 
-model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=10, n_jobs=-1)
+model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=500, n_jobs=-1)
 model_knn.fit(um_matrix)
 distances, indices = model_knn.kneighbors(um_matrix)
 session_dict = {}
@@ -54,7 +60,8 @@ def mean_reciprocal_rank(rs):
     rs = (np.asarray(r).nonzero()[0] for r in rs)
     return np.mean([1. / (r[0] + 1) if r.size else 0. for r in rs])
 
-for i in df.session_id.unique():
+
+def session_d(i):
     session_dict[i]={}
     session_items = list(df.loc[df['session_id']==i]['item_id'])
     N_s = indices[i]
@@ -75,6 +82,17 @@ for i in df.session_id.unique():
         session_dict[i]=dict(sorted(session_dict[i].items(), key=lambda x: x[1], reverse=True))
 
         session_dict[i] = {m: session_dict[i][m] for m in list(session_dict[i])[:10]}
+
+    return session_dict
+
+
+result = Parallel(n_jobs=-1)(delayed(session_d)(i) for i in session_validation_dict.keys())
+
+
+session_dict = {}
+for d in result:
+    session_dict.update(d)
+
 
 recall = 0
 for session in session_validation_dict:
@@ -99,8 +117,11 @@ for i in results:
     ndcg += ndcg_at_k(i, 10)
 ndcg = ndcg / len(results)
 
+stop = time.time()
+
 file1 = open("sknn_results.txt","a")
 file1.write(str(recall)+'\n')
 file1.write(str(mrr)+'\n')
 file1.write(str(ndcg)+'\n')
+file1.write('Elapsed time for the entire processing: {:.2f} s'.format(stop - start)+'\n')
 file1.close()
