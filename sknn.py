@@ -6,7 +6,9 @@ from joblib import Parallel, delayed
 import time
 
 start = time.time()
-
+file1 = open("sknn_results.txt","a")
+file1.write("1\n")
+file1.close()
 df = pd.read_csv('rsc15-raw/rsc15-clicks.dat', names=["session_id", "timestamp", "item_id", "category"],
                          header=None, sep=',', engine='python').drop_duplicates(subset=['session_id', 'item_id'], keep='last')
 df['value']=1
@@ -16,12 +18,19 @@ session_validation_dict = {}
 drop_index = []
 c = 0
 for i in df.session_id.unique():
-    if len(df.loc[df['session_id'] == i])>=5 and c<=100000:
+    if len(df.loc[df['session_id'] == i])>=5:
         session_validation_dict[i] = df.loc[df['session_id'] == i].head(2).tail(1)['item_id'].values[0]
         drop_index.append(df.loc[df['session_id'] == i].head(2).tail(1).index)
         c+=1
+    if c==100000:
+        break
+
 for i in drop_index:
     df = df.drop(i)
+
+file1 = open("sknn_results.txt","a")
+file1.write("1\n")
+file1.close()
 
 um_matrix = scipy.sparse.csr_matrix((df.value, (df.session_id, df.item_id)))
 
@@ -30,6 +39,10 @@ model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=500
 model_knn.fit(um_matrix)
 distances, indices = model_knn.kneighbors(um_matrix)
 session_dict = {}
+
+file1 = open("sknn_results.txt","a")
+file1.write("training\n")
+file1.close()
 
 def combineAll(input):
     result = set(input[0])
@@ -88,6 +101,9 @@ def session_d(i):
 
 result = Parallel(n_jobs=-1)(delayed(session_d)(i) for i in session_validation_dict.keys())
 
+file1 = open("sknn_results.txt","a")
+file1.write("sessions\n")
+file1.close()
 
 session_dict = {}
 for d in result:
@@ -109,6 +125,10 @@ for session in session_validation_dict:
         else:
             x.append(0)
     results.append(x)
+
+file1 = open("sknn_results.txt","a")
+file1.write("results\n")
+file1.close()
 
 mrr = mean_reciprocal_rank(results)
 
