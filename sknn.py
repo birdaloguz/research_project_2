@@ -16,20 +16,17 @@ df = df.reset_index()
 
 session_validation_dict = {}
 drop_index = []
-c = 0
-for i in df.session_id.unique():
-    if len(df.loc[df['session_id'] == i])>=5:
-        session_validation_dict[i] = df.loc[df['session_id'] == i].head(2).tail(1)['item_id'].values[0]
-        drop_index.append(df.loc[df['session_id'] == i].head(2).tail(1).index)
-        c+=1
-    if c==100000:
-        break
 
-for i in drop_index:
-    df = df.drop(i)
+for i in df.session_id.unique()[:200000]:
+    d=df.loc[df['session_id'] == i]
+    if len(d)>=5:
+        session_validation_dict[i] = d.iloc[[1]]['item_id'].values[0]
+        drop_index.append(d.iloc[[1]]['item_id'].index)
+
+df.drop(df.index[drop_index], inplace=True)
 
 file1 = open("sknn_results.txt","a")
-file1.write("1\n")
+file1.write("valid\n")
 file1.close()
 
 um_matrix = scipy.sparse.csr_matrix((df.value, (df.session_id, df.item_id)))
@@ -83,7 +80,6 @@ def session_d(i):
     r_items_combined = combineAll(r_items)
     for item in session_items:
         r_items_combined.remove(item)
-
     for item in r_items_combined:
         for idx, s in enumerate(N_s):
             if item in r_items[idx]:
@@ -95,7 +91,6 @@ def session_d(i):
         session_dict[i]=dict(sorted(session_dict[i].items(), key=lambda x: x[1], reverse=True))
 
         session_dict[i] = {m: session_dict[i][m] for m in list(session_dict[i])[:10]}
-
     return session_dict
 
 
