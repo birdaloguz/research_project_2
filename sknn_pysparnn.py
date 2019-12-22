@@ -1,14 +1,11 @@
 import pandas as pd
 import numpy as np
 import scipy
-from sklearn.neighbors import NearestNeighbors
+import pysparnn.cluster_index as ci
 from joblib import Parallel, delayed
 import time
-
 start = time.time()
-file1 = open("sknn_results.txt","a")
-file1.write("1\n")
-file1.close()
+
 df = pd.read_csv('rsc15-raw/rsc15-clicks.dat', names=["session_id", "timestamp", "item_id", "category"],
                          header=None, sep=',', engine='python', nrows=10000000).drop_duplicates(subset=['session_id', 'item_id'], keep='last')
 df['value']=1
@@ -25,22 +22,29 @@ for i in df.session_id.unique()[:200000]:
 
 df.drop(df.index[drop_index], inplace=True)
 
-file1 = open("sknn_results.txt","a")
-file1.write("valid\n")
-file1.close()
-
 um_matrix = scipy.sparse.csr_matrix((df.value, (df.session_id, df.item_id)))
 
+doc_index = np.array(range(len(df.session_id)))
 
-model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=100, n_jobs=-1)
-model_knn.fit(um_matrix)
-distances, indices = model_knn.kneighbors(um_matrix)
-print(time.time()-start)
-session_dict = {}
+snn = ci.MultiClusterIndex(um_matrix, doc_index, num_indexes=2)
+results = snn.search(um_matrix, k=100, return_distance=True, k_clusters=1)
 
-file1 = open("sknn_results.txt","a")
-file1.write("training\n")
+file1 = open("sknn_approx_results.txt","a")
+file1.write('trained')
 file1.close()
+
+distances=[]
+indices=[]
+for neighbors in results:
+    d=[]
+    i=[]
+    for n in neighbors:
+        d.append(n[0])
+        i.append(int(n[1]))
+    distances.append(d)
+    indices.append(i)
+
+session_dict = {}
 
 def combineAll(input):
     result = set(input[0])
@@ -71,16 +75,13 @@ def mean_reciprocal_rank(rs):
     rs = (np.asarray(r).nonzero()[0] for r in rs)
     return np.mean([1. / (r[0] + 1) if r.size else 0. for r in rs])
 
-
 def session_d(i):
     session_dict[i]={}
     session_items = list(df.loc[df['session_id']==i]['item_id'])
     N_s = indices[i]
-
     N_s_distances = distances[i]
     r_items = [list(df.loc[df['session_id']==s]['item_id']) for s in N_s]
     r_items_combined = combineAll(r_items)
-
     for item in session_items:
         r_items_combined.remove(item)
     for item in r_items_combined:
@@ -124,10 +125,6 @@ for session in session_validation_dict:
             x.append(0)
     results.append(x)
 
-file1 = open("sknn_results.txt","a")
-file1.write("results\n")
-file1.close()
-
 mrr = mean_reciprocal_rank(results)
 
 ndcg = 0
@@ -137,7 +134,7 @@ ndcg = ndcg / len(results)
 
 stop = time.time()
 
-file1 = open("sknn_results.txt","a")
+file1 = open("sknn_approx_results.txt","a")
 file1.write(str(recall)+'\n')
 file1.write(str(mrr)+'\n')
 file1.write(str(ndcg)+'\n')
