@@ -4,13 +4,14 @@ import scipy
 from sklearn.neighbors import NearestNeighbors
 from joblib import Parallel, delayed
 import time
+import json
 
 start = time.time()
 file1 = open("sknn_results.txt","a")
 file1.write("1\n")
 file1.close()
 df = pd.read_csv('rsc15-raw/rsc15-clicks.dat', names=["session_id", "timestamp", "item_id", "category"],
-                         header=None, sep=',', engine='python', nrows=10000000).drop_duplicates(subset=['session_id', 'item_id'], keep='last')
+                         header=None, sep=',', engine='python').drop_duplicates(subset=['session_id', 'item_id'], keep='last')
 df['value']=1
 df = df.reset_index()
 
@@ -32,9 +33,9 @@ file1.close()
 um_matrix = scipy.sparse.csr_matrix((df.value, (df.session_id, df.item_id)))
 
 
-model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=100, n_jobs=-1)
+'''model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=100, n_jobs=-1)
 model_knn.fit(um_matrix)
-distances, indices = model_knn.kneighbors(um_matrix)
+distances, indices = model_knn.kneighbors(um_matrix)'''
 print(time.time()-start)
 session_dict = {}
 
@@ -71,13 +72,26 @@ def mean_reciprocal_rank(rs):
     rs = (np.asarray(r).nonzero()[0] for r in rs)
     return np.mean([1. / (r[0] + 1) if r.size else 0. for r in rs])
 
-
+with open('index_sknn.txt') as json_file:
+    index_sknn = json.load(json_file)
+    
 def session_d(i):
     session_dict[i]={}
     session_items = list(df.loc[df['session_id']==i]['item_id'])
-    N_s = indices[i]
 
-    N_s_distances = distances[i]
+    session_neighbors = [index_sknn[str(item)] for item in session_items]
+    session_neighbors = combineAll(session_neighbors)
+
+    temp_df = df.loc[df["session_id"].isin(session_neighbors)]
+    matrix_df = temp_df.pivot(index='session_id', columns='item_id', values='value').fillna(0).astype(bool).astype(
+        int)
+    model_knn = NearestNeighbors(metric='cosine', algorithm='brute', n_neighbors=50, n_jobs=-1)
+    model_knn.fit(matrix_df)
+    distances, indices = model_knn.kneighbors(matrix_df.iloc[[i]])
+
+    N_s = indices[0]
+    N_s_distances = distances[0]
+
     r_items = [list(df.loc[df['session_id']==s]['item_id']) for s in N_s]
     r_items_combined = combineAll(r_items)
 
