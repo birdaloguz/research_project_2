@@ -7,7 +7,7 @@ import time
 start = time.time()
 
 df = pd.read_csv('rsc15-raw/rsc15-clicks.dat', names=["session_id", "timestamp", "item_id", "category"],
-                         header=None, sep=',', engine='python', nrows=10000000).drop_duplicates(subset=['session_id', 'item_id'], keep='last')
+                         header=None, sep=',', engine='python', nrows=1000000).drop_duplicates(subset=['session_id', 'item_id'], keep='last')
 df['value']=1
 df = df.reset_index()
 
@@ -25,6 +25,10 @@ df.drop(df.index[drop_index], inplace=True)
 um_matrix = scipy.sparse.csr_matrix((df.value, (df.session_id, df.item_id)))
 
 doc_index = np.array(range(len(df.session_id)))
+
+file1 = open("sknn_approx_results.txt","a")
+file1.write('ready')
+file1.close()
 
 snn = ci.MultiClusterIndex(um_matrix, doc_index, num_indexes=2)
 results = snn.search(um_matrix, k=100, return_distance=True, k_clusters=1)
@@ -83,7 +87,10 @@ def session_d(i):
     r_items = [list(df.loc[df['session_id']==s]['item_id']) for s in N_s]
     r_items_combined = combineAll(r_items)
     for item in session_items:
-        r_items_combined.remove(item)
+	try:
+		r_items_combined.remove(item)
+	except:
+		pass
     for item in r_items_combined:
         for idx, s in enumerate(N_s):
             if item in r_items[idx]:
